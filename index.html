@@ -3,147 +3,235 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GitHub Uploader - Sube archivos ZIP a GitHub</title>
+    <title>GitHub Drive - Sube archivos ZIP a GitHub</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Google+Sans:wght@400;500;600;700&family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-    <header class="header">
-        <div class="header-content">
-            <div class="logo">
-                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                    <polyline points="17 8 12 3 7 8"/>
-                    <line x1="12" y1="3" x2="12" y2="15"/>
-                </svg>
-                <h1>GitHub Uploader</h1>
-            </div>
-            <p class="subtitle">Sube archivos ZIP y sincroniza con tu repositorio de GitHub</p>
-        </div>
-    </header>
-
-    <main class="main">
-        <section class="upload-section">
-            <div class="drop-zone" id="dropZone">
-                <div class="drop-zone-content">
-                    <svg class="drop-icon" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+    <div class="app-container">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <div class="logo">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
                         <polyline points="17 8 12 3 7 8"/>
                         <line x1="12" y1="3" x2="12" y2="15"/>
                     </svg>
-                    <h2>Arrastra tu archivo ZIP aquí</h2>
-                    <p>o haz clic para seleccionar</p>
-                    <input type="file" id="fileInput" accept=".zip" hidden>
+                    <span class="logo-text">GitHub Drive</span>
                 </div>
             </div>
 
-            <div class="file-info" id="fileInfo" style="display: none;">
-                <div class="file-card">
-                    <div class="file-icon">
-                        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                            <polyline points="14 2 14 8 20 8"/>
-                            <path d="M12 18v-6"/>
-                            <path d="M8 18v-1"/>
-                            <path d="M16 18v-3"/>
-                        </svg>
-                    </div>
-                    <div class="file-details">
-                        <span class="file-name" id="fileName">archivo.zip</span>
-                        <span class="file-size" id="fileSize">2.5 MB</span>
-                    </div>
-                    <button class="btn-icon" id="removeFile" title="Eliminar archivo">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <line x1="18" y1="6" x2="6" y2="18"/>
-                            <line x1="6" y1="6" x2="18" y2="18"/>
-                        </svg>
-                    </button>
-                </div>
-            </div>
-        </section>
-
-        <section class="files-section" id="filesSection" style="display: none;">
-            <div class="section-header">
-                <h3>Archivos extraídos</h3>
-                <span class="file-count" id="fileCount">0 archivos</span>
-            </div>
-            <div class="file-tree" id="fileTree">
-                <!-- File tree will be rendered here -->
-            </div>
-        </section>
-
-        <section class="config-section">
-            <h3>Configuración de GitHub</h3>
-            
-            <div class="form-group">
-                <label for="githubToken">Token de GitHub</label>
-                <div class="input-wrapper">
-                    <input type="password" id="githubToken" placeholder="ghp_xxxxxxxxxxxxxxxxxxxx" autocomplete="off">
-                    <button class="btn-toggle-visibility" id="toggleToken" type="button">
-                        <svg class="icon-eye" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
-                            <circle cx="12" cy="12" r="3"/>
-                        </svg>
-                        <svg class="icon-eye-off" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display: none;">
-                            <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
-                            <line x1="1" y1="1" x2="23" y2="23"/>
-                        </svg>
-                    </button>
-                </div>
-                <span class="form-hint">Requiere scope <code>repo</code> para commits</span>
-            </div>
-
-            <div class="form-group">
-                <label for="repoPath">Repositorio</label>
-                <input type="text" id="repoPath" placeholder="usuario/nombre-repositorio">
-                <span class="form-hint">Formato: propietario/repositorio</span>
-            </div>
-
-            <div class="form-group">
-                <label for="commitMessage">Mensaje del commit</label>
-                <input type="text" id="commitMessage" placeholder="feat: agregar archivos del proyecto">
-            </div>
-
-            <div class="form-actions">
-                <button class="btn btn-primary" id="uploadBtn" disabled>
+            <nav class="sidebar-nav">
+                <a href="#" class="nav-item active">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="3" y="3" width="7" height="7"/>
+                        <rect x="14" y="3" width="7" height="7"/>
+                        <rect x="14" y="14" width="7" height="7"/>
+                        <rect x="3" y="14" width="7" height="7"/>
+                    </svg>
+                    <span>Mis archivos</span>
+                </a>
+                <a href="#" class="nav-item">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"/>
+                        <polyline points="12 6 12 12 16 14"/>
+                    </svg>
+                    <span>Reciente</span>
+                </a>
+                <a href="#" class="nav-item">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
                         <polyline points="17 8 12 3 7 8"/>
                         <line x1="12" y1="3" x2="12" y2="15"/>
                     </svg>
-                    <span>Subir a GitHub</span>
-                </button>
-            </div>
-        </section>
+                    <span>Subir ZIP</span>
+                </a>
+            </nav>
 
-        <section class="progress-section" id="progressSection" style="display: none;">
-            <div class="progress-card">
-                <div class="progress-header">
-                    <span class="progress-title">Subiendo archivos...</span>
-                    <span class="progress-count" id="progressCount">0 / 0</span>
+            <div class="sidebar-footer">
+                <p>100% local · Privado</p>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Header -->
+            <header class="main-header">
+                <div class="header-left">
+                    <h1>Mi unidad</h1>
                 </div>
-                <div class="progress-bar">
-                    <div class="progress-fill" id="progressFill"></div>
+                <div class="header-right">
+                    <button class="icon-btn" id="themeToggle" title="Cambiar tema">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="5"/>
+                            <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
+                        </svg>
+                    </button>
                 </div>
-                <p class="progress-status" id="progressStatus">Preparando...</p>
-            </div>
-        </section>
+            </header>
 
-        <section class="result-section" id="resultSection" style="display: none;">
-            <div class="result-card" id="resultCard">
-                <!-- Result will be rendered here -->
-            </div>
-        </section>
-    </main>
+            <!-- Content Area -->
+            <div class="content-area">
+                <!-- Upload Card -->
+                <section class="upload-card">
+                    <div class="drop-zone" id="dropZone">
+                        <div class="drop-zone-content">
+                            <div class="drop-icon-wrapper">
+                                <svg class="drop-icon" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                                    <polyline points="17 8 12 3 7 8"/>
+                                    <line x1="12" y1="3" x2="12" y2="15"/>
+                                </svg>
+                            </div>
+                            <h2>Arrastra tu archivo ZIP aquí</h2>
+                            <p>o haz clic para seleccionar</p>
+                            <input type="file" id="fileInput" accept=".zip" hidden>
+                        </div>
+                    </div>
 
-    <footer class="footer">
-        <p>Procesamiento 100% local · Tu token nunca sale del navegador</p>
-    </footer>
+                    <div class="file-preview" id="filePreview" style="display: none;">
+                        <div class="file-card">
+                            <div class="file-icon-wrapper">
+                                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                                    <polyline points="14 2 14 8 20 8"/>
+                                    <path d="M12 18v-6"/>
+                                    <path d="M8 18v-1"/>
+                                    <path d="M16 18v-3"/>
+                                </svg>
+                            </div>
+                            <div class="file-details">
+                                <span class="file-name" id="fileName">archivo.zip</span>
+                                <span class="file-size" id="fileSize">2.5 MB</span>
+                            </div>
+                            <button class="icon-btn" id="removeFile" title="Eliminar archivo">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <line x1="18" y1="6" x2="6" y2="18"/>
+                                    <line x1="6" y1="6" x2="18" y2="18"/>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Files Card -->
+                <section class="files-card" id="filesCard" style="display: none;">
+                    <div class="card-header">
+                        <div class="header-title">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+                            </svg>
+                            <h3>Archivos extraídos</h3>
+                        </div>
+                        <span class="file-count" id="fileCount">0 archivos</span>
+                    </div>
+                    <div class="files-list" id="filesList">
+                        <!-- Files will be rendered here -->
+                    </div>
+                </section>
+
+                <!-- Settings Card -->
+                <section class="settings-card">
+                    <div class="card-header">
+                        <div class="header-title">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <circle cx="12" cy="12" r="3"/>
+                                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+                            </svg>
+                            <h3>Configuración de GitHub</h3>
+                        </div>
+                    </div>
+
+                    <div class="card-content">
+                        <div class="form-group">
+                            <label for="githubToken">Token de acceso</label>
+                            <div class="input-group">
+                                <div class="input-icon">
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/>
+                                    </svg>
+                                </div>
+                                <input type="password" id="githubToken" placeholder="ghp_xxxxxxxxxxxxxxxxxxxx" autocomplete="off">
+                                <button class="icon-btn" id="toggleToken" title="Mostrar/Ocultar">
+                                    <svg class="icon-eye" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                                        <circle cx="12" cy="12" r="3"/>
+                                    </svg>
+                                    <svg class="icon-eye-off" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display: none;">
+                                        <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
+                                        <line x1="1" y1="1" x2="23" y2="23"/>
+                                    </svg>
+                                </button>
+                            </div>
+                            <span class="form-hint">Necesita el scope <code>repo</code></span>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="repoPath">Repositorio</label>
+                            <div class="input-group">
+                                <div class="input-icon">
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/>
+                                    </svg>
+                                </div>
+                                <input type="text" id="repoPath" placeholder="usuario/nombre-repositorio">
+                            </div>
+                            <span class="form-hint">Formato: propietario/repositorio</span>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="commitMessage">Mensaje del commit</label>
+                            <div class="input-group">
+                                <div class="input-icon">
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                                        <polyline points="14 2 14 8 20 8"/>
+                                    </svg>
+                                </div>
+                                <input type="text" id="commitMessage" placeholder="feat: agregar archivos del proyecto">
+                            </div>
+                        </div>
+
+                        <button class="btn btn-primary" id="uploadBtn" disabled>
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                                <polyline points="17 8 12 3 7 8"/>
+                                <line x1="12" y1="3" x2="12" y2="15"/>
+                            </svg>
+                            <span>Subir a GitHub</span>
+                        </button>
+                    </div>
+                </section>
+
+                <!-- Progress Card -->
+                <section class="progress-card" id="progressCard" style="display: none;">
+                    <div class="card-content">
+                        <div class="progress-header">
+                            <span class="progress-title">Subiendo archivos...</span>
+                            <span class="progress-count" id="progressCount">0 / 0</span>
+                        </div>
+                        <div class="progress-bar-container">
+                            <div class="progress-bar" id="progressBar"></div>
+                        </div>
+                        <p class="progress-status" id="progressStatus">Preparando...</p>
+                    </div>
+                </section>
+
+                <!-- Result Card -->
+                <section class="result-card" id="resultCard" style="display: none;">
+                    <div class="result-content" id="resultContent">
+                        <!-- Result will be rendered here -->
+                    </div>
+                </section>
+            </div>
+        </main>
+    </div>
 
     <div class="loading-overlay" id="loadingOverlay" style="display: none;">
-        <div class="spinner"></div>
+        <div class="loading-spinner"></div>
         <span>Procesando ZIP...</span>
     </div>
 
