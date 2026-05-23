@@ -58,26 +58,15 @@
         resultContent.innerHTML = `
             <div class="result-icon">
                 ${success ? `
-                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
-                        <polyline points="22 4 12 14.01 9 11.01"/>
-                    </svg>
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
                 ` : `
-                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <circle cx="12" cy="12" r="10"/>
-                        <line x1="12" y1="8" x2="12" y2="12"/>
-                        <line x1="12" y1="16" x2="12.01" y2="16"/>
-                    </svg>
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
                 `}
             </div>
             <h2 class="result-title">${title}</h2>
             <p class="result-message">${message}</p>
             ${link ? `<a href="${link}" target="_blank" rel="noopener noreferrer" class="result-link">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
-                    <polyline points="15 3 21 3 21 9"/>
-                    <line x1="10" y1="14" x2="21" y2="3"/>
-                </svg>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
                 Ver commit en GitHub
             </a>` : ''}
         `;
@@ -93,43 +82,31 @@
         uploadBtn.disabled = !isValid;
     }
 
-    function getDriveIconColor(filename, isFolder) {
-        if (isFolder) {
-            const colors = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#a855f7', '#f97316', '#06b6d4'];
-            const hash = filename.split('').reduce((a, b) => a + b.charCodeAt(0), 0);
-            return colors[hash % colors.length];
-        }
-
+    function getDriveIconColor(filename) {
         const ext = filename.split('.').pop().toLowerCase();
         const iconColors = {
-            js: '#f7df1e', ts: '#3178c6', jsx: '#61dafb', tsx: '#3178c6', json: '#cbcb41',
-            html: '#e34f26', css: '#1572b6', scss: '#c6538c', md: '#083fa1', py: '#3776ab',
-            rb: '#cc342d', php: '#777bb4', java: '#b07219', go: '#00add8', rs: '#dea584',
-            c: '#555555', cpp: '#f34b7d', h: '#555555', sh: '#89e051', yaml: '#cb171e',
-            yml: '#cb171e', xml: '#e37933', svg: '#ffb13b', png: '#a074c4', jpg: '#a074c4',
-            jpeg: '#a074c4', gif: '#a074c4', webp: '#a074c4', txt: '#8c8c8c', pdf: '#f40f02',
-            doc: '#2b579a', docx: '#2b579a', xls: '#217346', xlsx: '#217346', ppt: '#d24726', pptx: '#d24726'
+            js: '#eab308', ts: '#3b82f6', jsx: '#06b6d4', tsx: '#3b82f6', json: '#64748b',
+            html: '#ef4444', css: '#3b82f6', scss: '#ec4899', md: '#64748b', py: '#3b82f6',
+            rb: '#ef4444', php: '#8b5cf6', java: '#f97316', go: '#06b6d4', rs: '#f97316',
+            sh: '#22c55e', yaml: '#ef4444', yml: '#ef4444', xml: '#f97316', svg: '#eab308', 
+            png: '#8b5cf6', jpg: '#8b5cf6', jpeg: '#8b5cf6', gif: '#8b5cf6', webp: '#8b5cf6', 
+            txt: '#64748b', pdf: '#ef4444'
         };
-
-        return iconColors[ext] || '#64748b';
+        return iconColors[ext] || '#94a3b8';
     }
 
-    function getFileIconSvg(filename, isFolder) {
-        if (isFolder) {
-            return `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>`;
-        }
-
+    function getFileIconSvg(filename) {
         const ext = filename.split('.').pop().toLowerCase();
 
         if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'].includes(ext)) {
-            return `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>`;
+            return `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>`;
         }
 
-        if (['js', 'ts', 'jsx', 'tsx', 'py', 'rb', 'php', 'java', 'go', 'rs', 'c', 'cpp', 'h'].includes(ext)) {
-            return `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>`;
+        if (['js', 'ts', 'jsx', 'tsx', 'py', 'rb', 'php', 'java', 'go', 'rs', 'c', 'cpp', 'h', 'sh'].includes(ext)) {
+            return `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>`;
         }
 
-        return `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>`;
+        return `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>`;
     }
 
     function renderFilesList(files) {
@@ -139,16 +116,16 @@
             const item = document.createElement('div');
             item.className = 'file-item';
 
-            const iconColor = getDriveIconColor(file.name, false);
-            const iconSvg = getFileIconSvg(file.name, false);
+            const iconColor = getDriveIconColor(file.name);
+            const iconSvg = getFileIconSvg(file.name);
 
             item.innerHTML = `
-                <div class="file-item-icon" style="background: ${iconColor}15;">
-                    <span style="color: ${iconColor};">${iconSvg}</span>
+                <div class="file-item-icon" style="color: ${iconColor};">
+                    ${iconSvg}
                 </div>
                 <div class="file-item-info">
-                    <div class="file-item-name">${file.name}</div>
-                    <div class="file-item-path">${file.path}</div>
+                    <div class="file-item-name" title="${file.name}">${file.name}</div>
+                    <div class="file-item-path" title="${file.path}">${file.path}</div>
                 </div>
                 <div class="file-item-size">${formatFileSize(file.size || 0)}</div>
             `;
@@ -226,7 +203,7 @@
             filePreview.style.display = 'block';
 
             filesCard.style.display = 'block';
-            fileCount.textContent = `${extractedFiles.length} archivo${extractedFiles.length !== 1 ? 's' : ''}`;
+            fileCount.textContent = `${extractedFiles.length} archivos`;
             renderFilesList(extractedFiles);
 
             validateForm();
@@ -263,7 +240,7 @@
         return regex.test(path);
     }
 
-    // Helper function to prevent stack overflow on large files base64 conversion
+    // Prevent Maximum call stack size exceeded
     function arrayBufferToBase64(buffer) {
         let binary = '';
         const bytes = new Uint8Array(buffer);
@@ -299,7 +276,7 @@
 
             if (!repoResponse.ok) {
                 if (repoResponse.status === 401) throw new Error('Token de GitHub inválido o sin permisos.');
-                if (repoResponse.status === 404) throw new Error('Repositorio no encontrado. Verifica el nombre y que el token tenga acceso.');
+                if (repoResponse.status === 404) throw new Error('Repositorio no encontrado.');
                 throw new Error(`Error de GitHub: ${repoResponse.status}`);
             }
 
@@ -318,7 +295,6 @@
 
             setProgress(5, 0, extractedFiles.length, 'Preparando archivos...');
 
-            // Create blobs
             const blobs = [];
             for (let i = 0; i < extractedFiles.length; i++) {
                 const file = extractedFiles[i];
@@ -339,7 +315,7 @@
                 setProgress(percent, i + 1, extractedFiles.length, `Subiendo: ${file.path}`);
             }
 
-            setProgress(85, extractedFiles.length, extractedFiles.length, 'Creando árbol de archivos...');
+            setProgress(85, extractedFiles.length, extractedFiles.length, 'Creando árbol...');
 
             const treeResponse = await fetch(`https://api.github.com/repos/${owner}/${repoName}/git/trees`, {
                 method: 'POST',
