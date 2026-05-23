@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GitHub Uploader - Sube archivos ZIP a GitHub</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <header class="header">
+        <div class="header-content">
+            <div class="logo">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                    <polyline points="17 8 12 3 7 8"/>
+                    <line x1="12" y1="3" x2="12" y2="15"/>
+                </svg>
+                <h1>GitHub Uploader</h1>
+            </div>
+            <p class="subtitle">Sube archivos ZIP y sincroniza con tu repositorio de GitHub</p>
+        </div>
+    </header>
+
+    <main class="main">
+        <section class="upload-section">
+            <div class="drop-zone" id="dropZone">
+                <div class="drop-zone-content">
+                    <svg class="drop-icon" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                        <polyline points="17 8 12 3 7 8"/>
+                        <line x1="12" y1="3" x2="12" y2="15"/>
+                    </svg>
+                    <h2>Arrastra tu archivo ZIP aquí</h2>
+                    <p>o haz clic para seleccionar</p>
+                    <input type="file" id="fileInput" accept=".zip" hidden>
+                </div>
+            </div>
+
+            <div class="file-info" id="fileInfo" style="display: none;">
+                <div class="file-card">
+                    <div class="file-icon">
+                        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                            <polyline points="14 2 14 8 20 8"/>
+                            <path d="M12 18v-6"/>
+                            <path d="M8 18v-1"/>
+                            <path d="M16 18v-3"/>
+                        </svg>
+                    </div>
+                    <div class="file-details">
+                        <span class="file-name" id="fileName">archivo.zip</span>
+                        <span class="file-size" id="fileSize">2.5 MB</span>
+                    </div>
+                    <button class="btn-icon" id="removeFile" title="Eliminar archivo">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <line x1="18" y1="6" x2="6" y2="18"/>
+                            <line x1="6" y1="6" x2="18" y2="18"/>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <section class="files-section" id="filesSection" style="display: none;">
+            <div class="section-header">
+                <h3>Archivos extraídos</h3>
+                <span class="file-count" id="fileCount">0 archivos</span>
+            </div>
+            <div class="file-tree" id="fileTree">
+                <!-- File tree will be rendered here -->
+            </div>
+        </section>
+
+        <section class="config-section">
+            <h3>Configuración de GitHub</h3>
+            
+            <div class="form-group">
+                <label for="githubToken">Token de GitHub</label>
+                <div class="input-wrapper">
+                    <input type="password" id="githubToken" placeholder="ghp_xxxxxxxxxxxxxxxxxxxx" autocomplete="off">
+                    <button class="btn-toggle-visibility" id="toggleToken" type="button">
+                        <svg class="icon-eye" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                            <circle cx="12" cy="12" r="3"/>
+                        </svg>
+                        <svg class="icon-eye-off" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display: none;">
+                            <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
+                            <line x1="1" y1="1" x2="23" y2="23"/>
+                        </svg>
+                    </button>
+                </div>
+                <span class="form-hint">Requiere scope <code>repo</code> para commits</span>
+            </div>
+
+            <div class="form-group">
+                <label for="repoPath">Repositorio</label>
+                <input type="text" id="repoPath" placeholder="usuario/nombre-repositorio">
+                <span class="form-hint">Formato: propietario/repositorio</span>
+            </div>
+
+            <div class="form-group">
+                <label for="commitMessage">Mensaje del commit</label>
+                <input type="text" id="commitMessage" placeholder="feat: agregar archivos del proyecto">
+            </div>
+
+            <div class="form-actions">
+                <button class="btn btn-primary" id="uploadBtn" disabled>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                        <polyline points="17 8 12 3 7 8"/>
+                        <line x1="12" y1="3" x2="12" y2="15"/>
+                    </svg>
+                    <span>Subir a GitHub</span>
+                </button>
+            </div>
+        </section>
+
+        <section class="progress-section" id="progressSection" style="display: none;">
+            <div class="progress-card">
+                <div class="progress-header">
+                    <span class="progress-title">Subiendo archivos...</span>
+                    <span class="progress-count" id="progressCount">0 / 0</span>
+                </div>
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progressFill"></div>
+                </div>
+                <p class="progress-status" id="progressStatus">Preparando...</p>
+            </div>
+        </section>
+
+        <section class="result-section" id="resultSection" style="display: none;">
+            <div class="result-card" id="resultCard">
+                <!-- Result will be rendered here -->
+            </div>
+        </section>
+    </main>
+
+    <footer class="footer">
+        <p>Procesamiento 100% local · Tu token nunca sale del navegador</p>
+    </footer>
+
+    <div class="loading-overlay" id="loadingOverlay" style="display: none;">
+        <div class="spinner"></div>
+        <span>Procesando ZIP...</span>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
