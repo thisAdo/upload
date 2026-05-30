@@ -36,7 +36,10 @@
     let currentZip = null;
     let extractedFiles = [];
 
-    // Utils
+    function sleep(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
     function escapeHTML(value) {
         return String(value ?? '')
             .replace(/&/g, '&amp;')
@@ -76,16 +79,201 @@
         }
     }
 
-    async function githubFetchJSON(url, options = {}) {
-        const response = await fetch(url, options);
-        const data = await readGitHubResponse(response);
+    async function githubFetchJSON(url, options = {}, retryOptions = {}) {
+        const maxRetries = retryOptions.retries ?? 5;
 
-        if (!response.ok) {
+        for (let attempt = 0; attempt <= maxRetries; attempt++) {
+            const response = await fetch(url, options);
+            const data = await readGitHubResponse(response);
+
+            if (response.ok) return data;
+
             const message = data?.message || `Error HTTP ${response.status}`;
+
+            const isSecondaryLimit =
+                response.status === 403 &&
+                /secondary rate limit|abuse detection|rate limit/i.test(message);
+
+            const isRetryable =
+                response.status === 429 ||
+                response.status >= 500 ||
+                isSecondaryLimit;
+
+            if (isRetryable && attempt < maxRetries) {
+                const retryAfter = Number(response.headers.get('retry-after') || 0);
+
+                const delay = retryAfter > 0
+                    ? retryAfter * 1000
+                    : Math.min(8000 * Math.pow(2, attempt), 60000);
+
+                setProgress(
+                    50,
+                    0,
+                    0,
+                    `GitHub limitó temporalmente la subida. Reintentando en ${Math.ceil(delay / 1000)}s...`
+                );
+
+                await sleep(delay);
+                continue;
+            }
+
             throw new Error(message);
         }
 
-        return data;
+        throw new Error('GitHub no respondió correctamente.');
+    }
+
+    function arrayBufferToBase64(buffer) {
+        let binary = '';
+        const bytes = new Uint8Array(buffer);
+        const chunkSize = 8192;
+
+        for (let i = 0; i < bytes.length; i += chunkSize) {
+            const chunk = bytes.subarray(i, i + chunkSize);
+            binary += String.fromCharCode.apply(null, chunk);
+        }
+
+        return btoa(binary);
+    }
+
+    function getFileExtension(filename) {
+        const clean = String(filename || '').split('?')[0].split('#')[0];
+        const parts = clean.split('.');
+
+        return parts.length > 1 ? parts.pop().toLowerCase() : '';
+    }
+
+    function uint8ToText(bytes) {
+        return new TextDecoder('utf-8').decode(bytes);
+    }
+
+    function shouldIgnoreZipPath(path) {
+        const normalized = String(path || '').replace(/\\/g, '/');
+
+        return (
+            normalized.startsWith('__MACOSX/') ||
+            normalized.includes('/.git/') ||
+            normalized.startsWith('.git/') ||
+            normalized.includes('/node_modules/') ||
+            normalized.startsWith('node_modules/') ||
+            normalized.includes('/.next/') ||
+            normalized.startsWith('.next/') ||
+            normalized.includes('/dist/') ||
+            normalized.startsWith('dist/') ||
+            normalized.includes('/build/') ||
+            normalized.startsWith('build/') ||
+            normalized.endsWith('.DS_Store')
+        );
+    }
+
+    function isInlineTextFile(file) {
+        const target = file.name || file.path || '';
+        const ext = getFileExtension(target);
+        const basename = target.split('/').pop().toLowerCase();
+
+        const textExtensions = new Set([
+            'js', 'mjs', 'cjs',
+            'ts', 'tsx', 'jsx',
+            'json',
+            'html', 'css', 'scss', 'sass',
+            'md', 'txt',
+            'yml', 'yaml',
+            'xml',
+            'env',
+            'gitignore',
+            'dockerignore',
+            'sh', 'bash', 'zsh',
+            'py', 'rb', 'php', 'java', 'go', 'rs',
+            'c', 'cpp', 'h', 'hpp',
+            'sql',
+            'toml', 'ini', 'conf',
+            'lock',
+            'svg'
+        ]);
+
+        const textNames = new Set([
+            '.env',
+            '.gitignore',
+            '.dockerignore',
+            'dockerfile',
+            'license',
+            'readme'
+        ]);
+
+        if (!file.content || file.content.length > 900 * 1024) return false;
+
+        const looksTextByName = textExtensions.has(ext) || textNames.has(basename);
+
+        if (!looksTextByName) return false;
+
+        const sample = file.content.subarray(0, Math.min(file.content.length, 8000));
+
+        for (const byte of sample) {
+            if (byte === 0) return false;
+        }
+
+        return true;
+    }
+
+    async function buildTreeEntries(files, owner, repoName, headers) {
+        const tree = [];
+        const binaryFiles = [];
+
+        for (const file of files) {
+            if (isInlineTextFile(file)) {
+                tree.push({
+                    path: file.path,
+                    mode: '100644',
+                    type: 'blob',
+                    content: uint8ToText(file.content)
+                });
+            } else {
+                binaryFiles.push(file);
+            }
+        }
+
+        if (binaryFiles.length === 0) {
+            return tree;
+        }
+
+        for (let i = 0; i < binaryFiles.length; i++) {
+            const file = binaryFiles[i];
+
+            setProgress(
+                Math.round(10 + ((i + 1) / binaryFiles.length) * 55),
+                i + 1,
+                binaryFiles.length,
+                `Subiendo binario: ${file.path}`
+            );
+
+            const blobData = await githubFetchJSON(
+                `https://api.github.com/repos/${owner}/${repoName}/git/blobs`,
+                {
+                    method: 'POST',
+                    headers,
+                    body: JSON.stringify({
+                        content: arrayBufferToBase64(file.content),
+                        encoding: 'base64'
+                    })
+                },
+                { retries: 6 }
+            );
+
+            if (!blobData?.sha) {
+                throw new Error(`GitHub no devolvió SHA para: ${file.path}`);
+            }
+
+            tree.push({
+                path: file.path,
+                sha: blobData.sha,
+                mode: '100644',
+                type: 'blob'
+            });
+
+            await sleep(900);
+        }
+
+        return tree;
     }
 
     function showResult(success, title, message, link) {
@@ -207,7 +395,6 @@
         });
     }
 
-    // Event Handlers
     function handleDragOver(e) {
         e.preventDefault();
         e.stopPropagation();
@@ -254,14 +441,17 @@
 
             currentZip.forEach((relativePath, zipEntry) => {
                 if (zipEntry.dir) return;
-                if (relativePath.startsWith('__MACOSX/')) return;
-                if (relativePath.endsWith('.DS_Store')) return;
+                if (shouldIgnoreZipPath(relativePath)) return;
 
                 promises.push(
                     zipEntry.async('uint8array').then(content => {
+                        const cleanPath = relativePath
+                            .replace(/\\/g, '/')
+                            .replace(/^\/+/, '');
+
                         extractedFiles.push({
-                            name: relativePath.split('/').pop(),
-                            path: relativePath.replace(/^\/+/, ''),
+                            name: cleanPath.split('/').pop(),
+                            path: cleanPath,
                             size: content.length,
                             content
                         });
@@ -324,19 +514,6 @@
         return /^[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+$/.test(path);
     }
 
-    function arrayBufferToBase64(buffer) {
-        let binary = '';
-        const bytes = new Uint8Array(buffer);
-        const chunkSize = 8192;
-
-        for (let i = 0; i < bytes.length; i += chunkSize) {
-            const chunk = bytes.subarray(i, i + chunkSize);
-            binary += String.fromCharCode.apply(null, chunk);
-        }
-
-        return btoa(binary);
-    }
-
     async function uploadToGitHub() {
         const token = githubToken.value.trim();
         const repo = repoPath.value.trim();
@@ -359,7 +536,8 @@
         const headers = {
             Authorization: `Bearer ${token}`,
             Accept: 'application/vnd.github.v3+json',
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            'X-GitHub-Api-Version': '2022-11-28'
         };
 
         resultCard.style.display = 'none';
@@ -369,9 +547,16 @@
         setProgress(0, 0, extractedFiles.length, 'Obteniendo información del repositorio...');
 
         try {
-            const repoData = await githubFetchJSON(`https://api.github.com/repos/${owner}/${repoName}`, {
-                headers
-            });
+            const cleanFiles = extractedFiles.filter(file => !shouldIgnoreZipPath(file.path));
+
+            if (!cleanFiles.length) {
+                throw new Error('El ZIP no contiene archivos válidos para subir.');
+            }
+
+            const repoData = await githubFetchJSON(
+                `https://api.github.com/repos/${owner}/${repoName}`,
+                { headers }
+            );
 
             const defaultBranch = repoData.default_branch;
 
@@ -379,7 +564,7 @@
                 throw new Error('No se pudo detectar la rama principal del repositorio.');
             }
 
-            setProgress(3, 0, extractedFiles.length, `Leyendo rama ${defaultBranch}...`);
+            setProgress(3, 0, cleanFiles.length, `Leyendo rama ${defaultBranch}...`);
 
             const refData = await githubFetchJSON(
                 `https://api.github.com/repos/${owner}/${repoName}/git/ref/heads/${defaultBranch}`,
@@ -392,7 +577,7 @@
                 throw new Error('No se pudo leer el SHA del último commit.');
             }
 
-            setProgress(5, 0, extractedFiles.length, 'Obteniendo árbol base del commit...');
+            setProgress(5, 0, cleanFiles.length, 'Obteniendo árbol base...');
 
             const latestCommitData = await githubFetchJSON(
                 `https://api.github.com/repos/${owner}/${repoName}/git/commits/${latestCommitSha}`,
@@ -405,11 +590,10 @@
                 throw new Error('No se pudo leer el SHA del árbol base.');
             }
 
-            let filesToUpload = extractedFiles;
+            let filesToUpload = cleanFiles;
 
-            // Si no quieres borrar todo ni actualizar existentes, solo sube archivos nuevos
             if (!deleteBefore && !updateExisting) {
-                setProgress(8, 0, extractedFiles.length, 'Verificando archivos existentes...');
+                setProgress(8, 0, cleanFiles.length, 'Verificando archivos existentes...');
 
                 const existingTreeData = await githubFetchJSON(
                     `https://api.github.com/repos/${owner}/${repoName}/git/trees/${latestTreeSha}?recursive=1`,
@@ -422,55 +606,27 @@
                         .map(item => item.path)
                 );
 
-                filesToUpload = extractedFiles.filter(file => !existingPaths.has(file.path));
+                filesToUpload = cleanFiles.filter(file => !existingPaths.has(file.path));
 
-                if (filesToUpload.length === 0) {
+                if (!filesToUpload.length) {
                     throw new Error('No hay archivos nuevos para subir. Todos ya existen.');
                 }
             }
 
-            setProgress(10, 0, filesToUpload.length, 'Preparando archivos...');
+            setProgress(10, 0, filesToUpload.length, 'Preparando árbol de archivos...');
 
-            const blobs = [];
+            const treeEntries = await buildTreeEntries(filesToUpload, owner, repoName, headers);
 
-            for (let i = 0; i < filesToUpload.length; i++) {
-                const file = filesToUpload[i];
-                const base64Content = arrayBufferToBase64(file.content);
-
-                const blobData = await githubFetchJSON(
-                    `https://api.github.com/repos/${owner}/${repoName}/git/blobs`,
-                    {
-                        method: 'POST',
-                        headers,
-                        body: JSON.stringify({
-                            content: base64Content,
-                            encoding: 'base64'
-                        })
-                    }
-                );
-
-                if (!blobData?.sha) {
-                    throw new Error(`GitHub no devolvió SHA para: ${file.path}`);
-                }
-
-                blobs.push({
-                    path: file.path,
-                    sha: blobData.sha,
-                    mode: '100644',
-                    type: 'blob'
-                });
-
-                const percent = Math.round(10 + ((i + 1) / filesToUpload.length) * 70);
-                setProgress(percent, i + 1, filesToUpload.length, `Subiendo: ${file.path}`);
+            if (!treeEntries.length) {
+                throw new Error('No hay archivos válidos para crear el commit.');
             }
 
-            setProgress(85, filesToUpload.length, filesToUpload.length, 'Creando árbol de archivos...');
+            setProgress(75, filesToUpload.length, filesToUpload.length, 'Creando árbol en GitHub...');
 
             const treePayload = {
-                tree: blobs
+                tree: treeEntries
             };
 
-            // Si no quieres borrar todo, se conserva el contenido anterior usando el tree SHA correcto
             if (!deleteBefore) {
                 treePayload.base_tree = latestTreeSha;
             }
@@ -481,14 +637,15 @@
                     method: 'POST',
                     headers,
                     body: JSON.stringify(treePayload)
-                }
+                },
+                { retries: 5 }
             );
 
             if (!treeData?.sha) {
                 throw new Error('GitHub no devolvió SHA del árbol creado.');
             }
 
-            setProgress(90, filesToUpload.length, filesToUpload.length, 'Creando commit...');
+            setProgress(88, filesToUpload.length, filesToUpload.length, 'Creando un solo commit...');
 
             const commitData = await githubFetchJSON(
                 `https://api.github.com/repos/${owner}/${repoName}/git/commits`,
@@ -500,14 +657,15 @@
                         tree: treeData.sha,
                         parents: [latestCommitSha]
                     })
-                }
+                },
+                { retries: 5 }
             );
 
             if (!commitData?.sha) {
                 throw new Error('GitHub no devolvió SHA del commit creado.');
             }
 
-            setProgress(95, filesToUpload.length, filesToUpload.length, 'Actualizando rama...');
+            setProgress(96, filesToUpload.length, filesToUpload.length, 'Actualizando rama...');
 
             await githubFetchJSON(
                 `https://api.github.com/repos/${owner}/${repoName}/git/refs/heads/${defaultBranch}`,
@@ -518,7 +676,8 @@
                         sha: commitData.sha,
                         force: false
                     })
-                }
+                },
+                { retries: 5 }
             );
 
             setProgress(100, filesToUpload.length, filesToUpload.length, '¡Completado!');
@@ -531,7 +690,7 @@
                 showResult(
                     true,
                     '¡Archivos subidos exitosamente!',
-                    `Se procesaron ${filesToUpload.length} archivos en ${owner}/${repoName} (${defaultBranch}).`,
+                    `Se subieron ${filesToUpload.length} archivos en un solo commit a ${owner}/${repoName} (${defaultBranch}).`,
                     commitUrl
                 );
             }, 500);
@@ -550,7 +709,6 @@
         }
     }
 
-    // Theme & UI Logic
     function initTheme() {
         const theme = localStorage.getItem('adzup-theme');
 
@@ -606,7 +764,6 @@
         sidebarOverlay.addEventListener('click', toggleSidebar);
     }
 
-    // Toggle logic dependency
     deleteBeforeToggle.addEventListener('change', e => {
         if (e.target.checked) {
             updateExistingToggle.checked = false;
