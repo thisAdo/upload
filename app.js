@@ -36,6 +36,8 @@
     let currentZip = null;
     let extractedFiles = [];
 
+    const GRAPHQL_URL = 'https://api.github.com/graphql';
+
     function sleep(ms) {
         return new Promise(resolve => setTimeout(resolve, ms));
     }
@@ -64,12 +66,12 @@
     }
 
     function setProgress(percent, current, total, status) {
-        progressBar.style.width = `${percent}%`;
+        progressBar.style.width = `${Math.max(0, Math.min(100, percent))}%`;
         progressCount.textContent = `${current} / ${total}`;
         progressStatus.textContent = status;
     }
 
-    async function readGitHubResponse(response) {
+    async function readResponseText(response) {
         const text = await response.text();
 
         try {
@@ -79,16 +81,38 @@
         }
     }
 
-    async function githubFetchJSON(url, options = {}, retryOptions = {}) {
-        const maxRetries = retryOptions.retries ?? 5;
+    async function graphqlRequest(token, query, variables = {}, retryOptions = {}) {
+        const maxRetries = retryOptions.retries ?? 4;
 
         for (let attempt = 0; attempt <= maxRetries; attempt++) {
-            const response = await fetch(url, options);
-            const data = await readGitHubResponse(response);
+            const response = await fetch(GRAPHQL_URL, {
+                method: 'POST',
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                    Accept: 'application/vnd.github+json',
+                    'Content-Type': 'application/json',
+                    'X-GitHub-Api-Version': '2022-11-28'
+                },
+                body: JSON.stringify({
+                    query,
+                    variables
+                })
+            });
 
-            if (response.ok) return data;
+            const data = await readResponseText(response);
 
-            const message = data?.message || `Error HTTP ${response.status}`;
+            const graphQLError = Array.isArray(data.errors) && data.errors.length
+                ? data.errors.map(error => error.message).join(' | ')
+                : '';
+
+            if (response.ok && !graphQLError) {
+                return data.data;
+            }
+
+            const message =
+                graphQLError ||
+                data?.message ||
+                `Error HTTP ${response.status}`;
 
             const isSecondaryLimit =
                 response.status === 403 &&
@@ -104,7 +128,7 @@
 
                 const delay = retryAfter > 0
                     ? retryAfter * 1000
-                    : Math.min(8000 * Math.pow(2, attempt), 60000);
+                    : Math.min(10000 * Math.pow(2, attempt), 60000);
 
                 setProgress(
                     50,
@@ -123,9 +147,41 @@
         throw new Error('GitHub no respondió correctamente.');
     }
 
-    function arrayBufferToBase64(buffer) {
+    function validateRepoPath(path) {
+        return /^[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+$/.test(path);
+    }
+
+    function normalizeZipPath(path) {
+        return String(path || '')
+            .replace(/\\/g, '/')
+            .replace(/^\/+/, '')
+            .replace(/\/+/g, '/');
+    }
+
+    function shouldIgnoreZipPath(path) {
+        const normalized = normalizeZipPath(path);
+
+        return (
+            !normalized ||
+            normalized.startsWith('__MACOSX/') ||
+            normalized.includes('/.git/') ||
+            normalized.startsWith('.git/') ||
+            normalized.includes('/node_modules/') ||
+            normalized.startsWith('node_modules/') ||
+            normalized.includes('/.next/') ||
+            normalized.startsWith('.next/') ||
+            normalized.includes('/dist/') ||
+            normalized.startsWith('dist/') ||
+            normalized.includes('/build/') ||
+            normalized.startsWith('build/') ||
+            normalized.includes('/.cache/') ||
+            normalized.startsWith('.cache/') ||
+            normalized.endsWith('.DS_Store')
+        );
+    }
+
+    function uint8ToBase64(bytes) {
         let binary = '';
-        const bytes = new Uint8Array(buffer);
         const chunkSize = 8192;
 
         for (let i = 0; i < bytes.length; i += chunkSize) {
@@ -143,182 +199,13 @@
         return parts.length > 1 ? parts.pop().toLowerCase() : '';
     }
 
-    function uint8ToText(bytes) {
-        return new TextDecoder('utf-8').decode(bytes);
-    }
-
-    function shouldIgnoreZipPath(path) {
-        const normalized = String(path || '').replace(/\\/g, '/');
-
-        return (
-            normalized.startsWith('__MACOSX/') ||
-            normalized.includes('/.git/') ||
-            normalized.startsWith('.git/') ||
-            normalized.includes('/node_modules/') ||
-            normalized.startsWith('node_modules/') ||
-            normalized.includes('/.next/') ||
-            normalized.startsWith('.next/') ||
-            normalized.includes('/dist/') ||
-            normalized.startsWith('dist/') ||
-            normalized.includes('/build/') ||
-            normalized.startsWith('build/') ||
-            normalized.endsWith('.DS_Store')
-        );
-    }
-
-    function isInlineTextFile(file) {
-        const target = file.name || file.path || '';
-        const ext = getFileExtension(target);
-        const basename = target.split('/').pop().toLowerCase();
-
-        const textExtensions = new Set([
-            'js', 'mjs', 'cjs',
-            'ts', 'tsx', 'jsx',
-            'json',
-            'html', 'css', 'scss', 'sass',
-            'md', 'txt',
-            'yml', 'yaml',
-            'xml',
-            'env',
-            'gitignore',
-            'dockerignore',
-            'sh', 'bash', 'zsh',
-            'py', 'rb', 'php', 'java', 'go', 'rs',
-            'c', 'cpp', 'h', 'hpp',
-            'sql',
-            'toml', 'ini', 'conf',
-            'lock',
-            'svg'
-        ]);
-
-        const textNames = new Set([
-            '.env',
-            '.gitignore',
-            '.dockerignore',
-            'dockerfile',
-            'license',
-            'readme'
-        ]);
-
-        if (!file.content || file.content.length > 900 * 1024) return false;
-
-        const looksTextByName = textExtensions.has(ext) || textNames.has(basename);
-
-        if (!looksTextByName) return false;
-
-        const sample = file.content.subarray(0, Math.min(file.content.length, 8000));
-
-        for (const byte of sample) {
-            if (byte === 0) return false;
-        }
-
-        return true;
-    }
-
-    async function buildTreeEntries(files, owner, repoName, headers) {
-        const tree = [];
-        const binaryFiles = [];
-
-        for (const file of files) {
-            if (isInlineTextFile(file)) {
-                tree.push({
-                    path: file.path,
-                    mode: '100644',
-                    type: 'blob',
-                    content: uint8ToText(file.content)
-                });
-            } else {
-                binaryFiles.push(file);
-            }
-        }
-
-        if (binaryFiles.length === 0) {
-            return tree;
-        }
-
-        for (let i = 0; i < binaryFiles.length; i++) {
-            const file = binaryFiles[i];
-
-            setProgress(
-                Math.round(10 + ((i + 1) / binaryFiles.length) * 55),
-                i + 1,
-                binaryFiles.length,
-                `Subiendo binario: ${file.path}`
-            );
-
-            const blobData = await githubFetchJSON(
-                `https://api.github.com/repos/${owner}/${repoName}/git/blobs`,
-                {
-                    method: 'POST',
-                    headers,
-                    body: JSON.stringify({
-                        content: arrayBufferToBase64(file.content),
-                        encoding: 'base64'
-                    })
-                },
-                { retries: 6 }
-            );
-
-            if (!blobData?.sha) {
-                throw new Error(`GitHub no devolvió SHA para: ${file.path}`);
-            }
-
-            tree.push({
-                path: file.path,
-                sha: blobData.sha,
-                mode: '100644',
-                type: 'blob'
-            });
-
-            await sleep(900);
-        }
-
-        return tree;
-    }
-
-    function showResult(success, title, message, link) {
-        const safeTitle = escapeHTML(title);
-        const safeMessage = escapeHTML(message);
-        const safeLink = link ? escapeHTML(link) : '';
-
-        resultCard.style.display = 'block';
-        resultContent.className = `result-content ${success ? 'success' : 'error'}`;
-
-        resultContent.innerHTML = `
-            <div class="result-icon">
-                ${
-                    success
-                        ? `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>`
-                        : `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>`
-                }
-            </div>
-            <h2 class="result-title">${safeTitle}</h2>
-            <p class="result-message">${safeMessage}</p>
-            ${
-                safeLink
-                    ? `<a href="${safeLink}" target="_blank" rel="noopener noreferrer" class="result-link"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>Ver commit en GitHub</a>`
-                    : ''
-            }
-        `;
-
-        resultCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    }
-
-    function validateForm() {
-        const isValid =
-            currentZip &&
-            githubToken.value.trim() &&
-            repoPath.value.trim() &&
-            commitMessage.value.trim();
-
-        uploadBtn.disabled = !isValid;
-    }
-
     function getDriveIconColor(filename) {
-        const ext = filename.split('.').pop().toLowerCase();
+        const ext = getFileExtension(filename);
 
         const iconColors = {
             js: '#eab308',
+            mjs: '#eab308',
+            cjs: '#eab308',
             ts: '#3b82f6',
             jsx: '#06b6d4',
             tsx: '#3b82f6',
@@ -326,6 +213,7 @@
             html: '#ef4444',
             css: '#3b82f6',
             scss: '#ec4899',
+            sass: '#ec4899',
             py: '#3b82f6',
             sh: '#22c55e',
             png: '#8b5cf6',
@@ -335,20 +223,22 @@
             webp: '#8b5cf6',
             svg: '#8b5cf6',
             txt: '#64748b',
-            pdf: '#ef4444'
+            md: '#64748b',
+            pdf: '#ef4444',
+            zip: '#f97316'
         };
 
         return iconColors[ext] || '#94a3b8';
     }
 
     function getFileIconSvg(filename) {
-        const ext = filename.split('.').pop().toLowerCase();
+        const ext = getFileExtension(filename);
 
         if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'].includes(ext)) {
             return `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>`;
         }
 
-        if (['js', 'ts', 'jsx', 'tsx', 'py', 'rb', 'php', 'java', 'go', 'rs', 'c', 'cpp', 'h', 'sh'].includes(ext)) {
+        if (['js', 'mjs', 'cjs', 'ts', 'jsx', 'tsx', 'py', 'rb', 'php', 'java', 'go', 'rs', 'c', 'cpp', 'h', 'sh'].includes(ext)) {
             return `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>`;
         }
 
@@ -393,6 +283,45 @@
 
             filesList.appendChild(item);
         });
+    }
+
+    function showResult(success, title, message, link) {
+        const safeTitle = escapeHTML(title);
+        const safeMessage = escapeHTML(message);
+        const safeLink = link ? escapeHTML(link) : '';
+
+        resultCard.style.display = 'block';
+        resultContent.className = `result-content ${success ? 'success' : 'error'}`;
+
+        resultContent.innerHTML = `
+            <div class="result-icon">
+                ${
+                    success
+                        ? `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>`
+                        : `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>`
+                }
+            </div>
+            <h2 class="result-title">${safeTitle}</h2>
+            <p class="result-message">${safeMessage}</p>
+            ${
+                safeLink
+                    ? `<a href="${safeLink}" target="_blank" rel="noopener noreferrer" class="result-link"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>Ver commit en GitHub</a>`
+                    : ''
+            }
+        `;
+
+        resultCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+
+    function validateForm() {
+        const isValid =
+            currentZip &&
+            extractedFiles.length > 0 &&
+            githubToken.value.trim() &&
+            repoPath.value.trim() &&
+            commitMessage.value.trim();
+
+        uploadBtn.disabled = !isValid;
     }
 
     function handleDragOver(e) {
@@ -440,15 +369,13 @@
             const promises = [];
 
             currentZip.forEach((relativePath, zipEntry) => {
+                const cleanPath = normalizeZipPath(relativePath);
+
                 if (zipEntry.dir) return;
-                if (shouldIgnoreZipPath(relativePath)) return;
+                if (shouldIgnoreZipPath(cleanPath)) return;
 
                 promises.push(
                     zipEntry.async('uint8array').then(content => {
-                        const cleanPath = relativePath
-                            .replace(/\\/g, '/')
-                            .replace(/^\/+/, '');
-
                         extractedFiles.push({
                             name: cleanPath.split('/').pop(),
                             path: cleanPath,
@@ -510,15 +437,114 @@
         if (eyeOff) eyeOff.style.display = isPassword ? 'block' : 'none';
     }
 
-    function validateRepoPath(path) {
-        return /^[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+$/.test(path);
+    async function getRepositoryHead(token, owner, repoName) {
+        const query = `
+            query GetRepositoryHead($owner: String!, $name: String!) {
+                repository(owner: $owner, name: $name) {
+                    nameWithOwner
+                    defaultBranchRef {
+                        name
+                        target {
+                            ... on Commit {
+                                oid
+                            }
+                        }
+                    }
+                }
+            }
+        `;
+
+        const data = await graphqlRequest(token, query, {
+            owner,
+            name: repoName
+        });
+
+        const repo = data?.repository;
+        const branchName = repo?.defaultBranchRef?.name;
+        const headOid = repo?.defaultBranchRef?.target?.oid;
+
+        if (!repo) {
+            throw new Error('Repositorio no encontrado o token sin permisos.');
+        }
+
+        if (!branchName || !headOid) {
+            throw new Error('No se pudo leer la rama principal del repositorio.');
+        }
+
+        return {
+            repositoryNameWithOwner: repo.nameWithOwner,
+            branchName,
+            headOid
+        };
+    }
+
+    function buildGraphQLAdditions(files) {
+        return files.map(file => ({
+            path: file.path,
+            contents: uint8ToBase64(file.content)
+        }));
+    }
+
+    async function createCommitWithAllFiles(token, repoInfo, message, files) {
+        const mutation = `
+            mutation CreateCommit(
+                $repositoryNameWithOwner: String!,
+                $branchName: String!,
+                $expectedHeadOid: GitObjectID!,
+                $headline: String!,
+                $additions: [FileAddition!]!
+            ) {
+                createCommitOnBranch(
+                    input: {
+                        branch: {
+                            repositoryNameWithOwner: $repositoryNameWithOwner,
+                            branchName: $branchName
+                        },
+                        message: {
+                            headline: $headline
+                        },
+                        expectedHeadOid: $expectedHeadOid,
+                        fileChanges: {
+                            additions: $additions
+                        }
+                    }
+                ) {
+                    commit {
+                        oid
+                        url
+                    }
+                }
+            }
+        `;
+
+        const additions = buildGraphQLAdditions(files);
+
+        const data = await graphqlRequest(
+            token,
+            mutation,
+            {
+                repositoryNameWithOwner: repoInfo.repositoryNameWithOwner,
+                branchName: repoInfo.branchName,
+                expectedHeadOid: repoInfo.headOid,
+                headline: message,
+                additions
+            },
+            { retries: 4 }
+        );
+
+        const commit = data?.createCommitOnBranch?.commit;
+
+        if (!commit?.oid || !commit?.url) {
+            throw new Error('GitHub no devolvió el commit creado.');
+        }
+
+        return commit;
     }
 
     async function uploadToGitHub() {
         const token = githubToken.value.trim();
         const repo = repoPath.value.trim();
         const message = commitMessage.value.trim();
-        const updateExisting = updateExistingToggle.checked;
         const deleteBefore = deleteBeforeToggle.checked;
 
         if (!validateRepoPath(repo)) {
@@ -531,20 +557,20 @@
             return;
         }
 
-        const [owner, repoName] = repo.split('/');
+        if (deleteBefore) {
+            showResult(
+                false,
+                'Opción no compatible',
+                'El modo GraphQL de pocas requests no puede borrar todo el repo sin listar archivos antes. Desactiva "Borrar todo antes" y vuelve a intentar.'
+            );
+            return;
+        }
 
-        const headers = {
-            Authorization: `Bearer ${token}`,
-            Accept: 'application/vnd.github.v3+json',
-            'Content-Type': 'application/json',
-            'X-GitHub-Api-Version': '2022-11-28'
-        };
+        const [owner, repoName] = repo.split('/');
 
         resultCard.style.display = 'none';
         progressCard.style.display = 'block';
         uploadBtn.disabled = true;
-
-        setProgress(0, 0, extractedFiles.length, 'Obteniendo información del repositorio...');
 
         try {
             const cleanFiles = extractedFiles.filter(file => !shouldIgnoreZipPath(file.path));
@@ -553,136 +579,37 @@
                 throw new Error('El ZIP no contiene archivos válidos para subir.');
             }
 
-            const repoData = await githubFetchJSON(
-                `https://api.github.com/repos/${owner}/${repoName}`,
-                { headers }
-            );
+            const totalBytes = cleanFiles.reduce((acc, file) => acc + file.content.length, 0);
+            const totalBase64Bytes = Math.ceil(totalBytes * 1.37);
 
-            const defaultBranch = repoData.default_branch;
-
-            if (!defaultBranch) {
-                throw new Error('No se pudo detectar la rama principal del repositorio.');
-            }
-
-            setProgress(3, 0, cleanFiles.length, `Leyendo rama ${defaultBranch}...`);
-
-            const refData = await githubFetchJSON(
-                `https://api.github.com/repos/${owner}/${repoName}/git/ref/heads/${defaultBranch}`,
-                { headers }
-            );
-
-            const latestCommitSha = refData?.object?.sha;
-
-            if (!latestCommitSha) {
-                throw new Error('No se pudo leer el SHA del último commit.');
-            }
-
-            setProgress(5, 0, cleanFiles.length, 'Obteniendo árbol base...');
-
-            const latestCommitData = await githubFetchJSON(
-                `https://api.github.com/repos/${owner}/${repoName}/git/commits/${latestCommitSha}`,
-                { headers }
-            );
-
-            const latestTreeSha = latestCommitData?.tree?.sha;
-
-            if (!latestTreeSha) {
-                throw new Error('No se pudo leer el SHA del árbol base.');
-            }
-
-            let filesToUpload = cleanFiles;
-
-            if (!deleteBefore && !updateExisting) {
-                setProgress(8, 0, cleanFiles.length, 'Verificando archivos existentes...');
-
-                const existingTreeData = await githubFetchJSON(
-                    `https://api.github.com/repos/${owner}/${repoName}/git/trees/${latestTreeSha}?recursive=1`,
-                    { headers }
+            if (totalBase64Bytes > 35 * 1024 * 1024) {
+                throw new Error(
+                    `El ZIP descomprimido es muy grande para subirlo en una sola petición GraphQL (${formatFileSize(totalBytes)}). Quita archivos pesados o sube menos archivos.`
                 );
-
-                const existingPaths = new Set(
-                    (existingTreeData.tree || [])
-                        .filter(item => item.type === 'blob')
-                        .map(item => item.path)
-                );
-
-                filesToUpload = cleanFiles.filter(file => !existingPaths.has(file.path));
-
-                if (!filesToUpload.length) {
-                    throw new Error('No hay archivos nuevos para subir. Todos ya existen.');
-                }
             }
 
-            setProgress(10, 0, filesToUpload.length, 'Preparando árbol de archivos...');
+            setProgress(5, 0, cleanFiles.length, 'Leyendo rama principal...');
 
-            const treeEntries = await buildTreeEntries(filesToUpload, owner, repoName, headers);
+            const repoInfo = await getRepositoryHead(token, owner, repoName);
 
-            if (!treeEntries.length) {
-                throw new Error('No hay archivos válidos para crear el commit.');
+            setProgress(35, 0, cleanFiles.length, 'Guardando archivos en RAM...');
+
+            const additions = buildGraphQLAdditions(cleanFiles);
+
+            if (!additions.length) {
+                throw new Error('No hay archivos válidos para subir.');
             }
 
-            setProgress(75, filesToUpload.length, filesToUpload.length, 'Creando árbol en GitHub...');
+            setProgress(65, cleanFiles.length, cleanFiles.length, 'Subiendo todo en una sola petición...');
 
-            const treePayload = {
-                tree: treeEntries
-            };
-
-            if (!deleteBefore) {
-                treePayload.base_tree = latestTreeSha;
-            }
-
-            const treeData = await githubFetchJSON(
-                `https://api.github.com/repos/${owner}/${repoName}/git/trees`,
-                {
-                    method: 'POST',
-                    headers,
-                    body: JSON.stringify(treePayload)
-                },
-                { retries: 5 }
+            const commit = await createCommitWithAllFiles(
+                token,
+                repoInfo,
+                message,
+                cleanFiles
             );
 
-            if (!treeData?.sha) {
-                throw new Error('GitHub no devolvió SHA del árbol creado.');
-            }
-
-            setProgress(88, filesToUpload.length, filesToUpload.length, 'Creando un solo commit...');
-
-            const commitData = await githubFetchJSON(
-                `https://api.github.com/repos/${owner}/${repoName}/git/commits`,
-                {
-                    method: 'POST',
-                    headers,
-                    body: JSON.stringify({
-                        message,
-                        tree: treeData.sha,
-                        parents: [latestCommitSha]
-                    })
-                },
-                { retries: 5 }
-            );
-
-            if (!commitData?.sha) {
-                throw new Error('GitHub no devolvió SHA del commit creado.');
-            }
-
-            setProgress(96, filesToUpload.length, filesToUpload.length, 'Actualizando rama...');
-
-            await githubFetchJSON(
-                `https://api.github.com/repos/${owner}/${repoName}/git/refs/heads/${defaultBranch}`,
-                {
-                    method: 'PATCH',
-                    headers,
-                    body: JSON.stringify({
-                        sha: commitData.sha,
-                        force: false
-                    })
-                },
-                { retries: 5 }
-            );
-
-            setProgress(100, filesToUpload.length, filesToUpload.length, '¡Completado!');
-
-            const commitUrl = `https://github.com/${owner}/${repoName}/commit/${commitData.sha}`;
+            setProgress(100, cleanFiles.length, cleanFiles.length, '¡Completado!');
 
             setTimeout(() => {
                 progressCard.style.display = 'none';
@@ -690,9 +617,11 @@
                 showResult(
                     true,
                     '¡Archivos subidos exitosamente!',
-                    `Se subieron ${filesToUpload.length} archivos en un solo commit a ${owner}/${repoName} (${defaultBranch}).`,
-                    commitUrl
+                    `Se subieron ${cleanFiles.length} archivos en un solo commit a ${repoInfo.repositoryNameWithOwner} (${repoInfo.branchName}).`,
+                    commit.url
                 );
+
+                uploadBtn.disabled = false;
             }, 500);
         } catch (error) {
             console.error('Error al subir archivos:', error);
@@ -766,8 +695,14 @@
 
     deleteBeforeToggle.addEventListener('change', e => {
         if (e.target.checked) {
-            updateExistingToggle.checked = false;
+            updateExistingToggle.checked = true;
             updateExistingToggle.disabled = true;
+
+            showResult(
+                false,
+                'Aviso',
+                'El modo "Borrar todo antes" necesita listar archivos y puede causar más requests. Para evitar el rate limit, déjalo desactivado.'
+            );
         } else {
             updateExistingToggle.disabled = false;
             updateExistingToggle.checked = true;
